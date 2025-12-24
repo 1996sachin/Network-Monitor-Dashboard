@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: network_mongo
+    restart: always
+    ports:
+      - "27019:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  node_app:
+    build: .
+    container_name: network_backend
+    restart: always
+    ports:
+      - "4000:4000"
+    depends_on:
+      - mongodb
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    command: npm start
+
+volumes:
+  mongo_data:

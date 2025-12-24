@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Monitor Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #1a1a1a; color: #fff; }
+    h1 { text-align: center; margin-bottom: 20px; color: #00ff00; }
+
+    /* Summary Cards */
+    .summary { display: flex; justify-content: space-around; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+    .card { background: #222; padding: 15px; border-radius: 8px; width: 150px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
+
+    /* Add Device Form */
+    form { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-bottom: 20px; background: #222; padding: 15px; border-radius: 8px; }
+    input { padding: 8px; border-radius: 4px; border: none; }
+    button { padding: 8px 12px; border-radius: 4px; border: none; background-color: #00ff00; color: #000; font-weight: bold; cursor: pointer; }
+    button:hover { background-color: #33ff33; }
+
+    /* Device Table */
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; cursor: pointer; }
+    th, td { border: 1px solid #444; padding: 8px; text-align: center; }
+    th { background-color: #111; color: white; }
+    tr.up { background-color: #28a74533; }
+    tr.down { background-color: #dc354533; }
+    tr:hover { background-color: #007bff33; }
+
+    /* Charts */
+    .charts { display: flex; justify-content: space-around; flex-wrap: wrap; gap: 20px; }
+    .chart-container { background: #222; padding: 15px; border-radius: 8px; width: 45%; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
+  </style>
+</head>
+<body>
+  <h1>Network Monitor Dashboard</h1>
+
+  <!-- Summary Cards -->
+  <div class="summary">
+    <div class="card" id="totalDevices">Total: 0</div>
+    <div class="card" id="upDevices">UP: 0</div>
+    <div class="card" id="downDevices">DOWN: 0</div>
+  </div>
+
+<!-- Add Device Form -->
+<form id="addDeviceForm">
+  <input type="text" name="name" placeholder="Device Name" required>
+  <input type="text" name="ip" placeholder="IP Address" required>
+  <input type="text" name="location" placeholder="Location">
+  <input type="text" name="description" placeholder="Description">
+  <button type="submit">Add Device</button>
+</form>
+
+<!-- Device Table -->
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>IP</th>
+      <th>Location</th>
+      <th>Description</th>
+      <th>Status</th>
+      <th>Uptime %</th>
+    </tr>
+  </thead>
+  <tbody id="deviceTable"></tbody>
+</table>
+
+<script>
+let statusChart, historyChart;
+let devicesList = [];
+
+// Fetch all devices and update dashboard
+async function fetchDevices() {
+  const res = await fetch('/api/devices');
+  const devices = await res.json();
+  devicesList = devices;
+
+  // Summary
+  const total = devices.length;
+  const up = devices.filter(d => d.status === 'up').length;
+  const down = total - up;
+  document.getElementById('totalDevices').textContent = `Total: ${total}`;
+  document.getElementById('upDevices').textContent = `UP: ${up}`;
+  document.getElementById('downDevices').textContent = `DOWN: ${down}`;
+
+  // Table
+  const tbody = document.getElementById('deviceTable');
+  tbody.innerHTML = '';
+  devices.forEach(d => {
+    const tr = document.createElement('tr');
+    tr.className = d.status || 'down';
+    tr.innerHTML = `
+      <td>${d.name}</td>
+      <td>${d.ip}</td>
+      <td>${d.location || '-'}</td>
+      <td>${d.description || '-'}</td>
+      <td>${(d.status || 'DOWN').toUpperCase()}</td>
+      <td>${d.uptime || 0}%</td>
+    `;
+    tr.addEventListener('click', () => fetchDeviceHistory(d._id));
+    tbody.appendChild(tr);
+  });
+
+  // Status Chart
+  const ctx = document.getElementById('statusChart').getContext('2d');
+  const chartData = { labels: ['UP', 'DOWN'], datasets: [{ data: [up, down], backgroundColor: ['#28a745', '#dc3545'] }] };
+  if (!statusChart) {
+    statusChart = new Chart(ctx, { type: 'doughnut', data: chartData });
+  } else {
+    statusChart.data.datasets[0].data = [up, down];
+    statusChart.update();
+  }
+
+  // Auto-select first device for history chart
+  if (devices.length && (!historyChart || !historyChart.data.labels.length)) {
+    fetchDeviceHistory(devices[0]._id);
+  }
+}
+
+// Fetch history for a device
+async function fetchDeviceHistory(deviceId) {
+  const res = await fetch(`/api/devices/${deviceId}/history`);
+  const history = await res.json();
+  const labels = history.map(h => new Date(h.time).toLocaleTimeString());
+  const data = history.map(h => h.status === 'up' ? 1 : 0);
+
+  const ctx = document.getElementById('historyChart').getContext('2d');
+  if (!historyChart) {
+    historyChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets: [{ label: 'Status (1=UP, 0=DOWN)', data, borderColor: '#007bff', backgroundColor: 'rgba(0,123,255,0.2)', fill: true, tension: 0.3 }] },
+      options: {
+        scales: {
+          y: { min: 0, max: 1, ticks: { stepSize: 1, callback: v => v === 1 ? 'UP' : 'DOWN' } }
+        }
+      }
+    });
+  } else {
+    historyChart.data.labels = labels;
+    historyChart.data.datasets[0].data = data;
+    historyChart.update();
+  }
+}
+
+// Add Device Form
+document.getElementById('addDeviceForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const formData = new FormData(e.target);
+  const data = {
+    name: formData.get('name'),
+    ip: formData.get('ip'),
+    location: formData.get('location'),
+    description: formData.get('description')
+  };
+  try {
+    const res = await fetch('/api/devices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    if (res.ok) {
+      e.target.reset();
+      fetchDevices(); // reload dashboard immediately
+      alert('Device added successfully!');
+    } else {
+      const err = await res.json();
+      alert('Error: ' + err.message);
+    }
+  } catch (err) {
+    alert('Error adding device: ' + err.message);
+  }
+});
+
+// Initial fetch + auto-refresh
+fetchDevices();
+setInterval(fetchDevices, 5000);
+</script>
