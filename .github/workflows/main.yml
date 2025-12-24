@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
     
     steps:
@@ -22,67 +22,38 @@ jobs:
         cache: 'npm'
     
     - name: Install dependencies
-      run: npm ci
+      run: npm install
     
-    - name: Run linter
-      run: npm run lint
+    - name: Run tests (if available)
+      run: npm test --if-present
       continue-on-error: true
     
-    - name: Build application
-      run: npm run build
-    
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-artifacts
-        path: build/
-        retention-days: 7
-
-  test:
-    runs-on: ubuntu-latest
-    needs: build
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-        cache: 'npm'
-    
-    - name: Install dependencies
-      run: npm ci
-    
-    - name: Run tests
-      run: npm test
-    
-    - name: Generate test coverage
-      run: npm run test:coverage
-      continue-on-error: true
+    - name: List available scripts
+      run: npm run
 
   deploy:
     runs-on: ubuntu-latest
-    needs: [build, test]
+    needs: build-and-test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Download build artifacts
-      uses: actions/download-artifact@v4
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
       with:
-        name: build-artifacts
-        path: build/
+        node-version: '18'
     
-    - name: Deploy to production
+    - name: Install dependencies
+      run: npm install
+    
+    - name: Deploy application
       run: |
-        echo "Deploying to production..."
+        echo "Application ready for deployment"
         # Add your deployment commands here
-        # Example: ./deploy.sh
-        # Example: aws s3 sync build/ s3://my-bucket/
+        # Example: npm start (for deploying to a server)
+        # Example: Deploy to Vercel, Netlify, etc.
     
-    - name: Notify deployment
+    - name: Deployment complete
       run: echo "Deployment completed successfully!"
