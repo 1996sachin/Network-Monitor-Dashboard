@@ -1,4 +1,4 @@
-pipeline {
+kpipeline {
     agent any
     
     environment {
@@ -11,10 +11,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 // Checkout code from GitHub
-                    url: 'https://github.com/1996sachin/Network-Monitor-Dashboard.git'
-                
-                // Or simply use:
-                // checkout scm
+                git url: 'https://github.com/1996sachin/Network-Monitor-Dashboard.git', branch: 'main'
             }
         }
         
@@ -36,7 +33,23 @@ pipeline {
             }
         }
         
+        stage('Code Quality') {
+            when {
+                // Run only for pull requests
+                changeRequest()
+            }
+            steps {
+                echo 'Running code quality checks...'
+                // Add code quality tools here
+                // sh 'sonar-scanner' // SonarQube example
+            }
+        }
+        
         stage('Deploy') {
+            when {
+                // Deploy only from main/master branch
+                branch 'main'
+            }
             steps {
                 echo 'Deploying application...'
                 // Add your deployment commands here
@@ -48,17 +61,9 @@ pipeline {
     post {
         success {
             echo 'Pipeline completed successfully!'
-            // Update GitHub commit status
-            githubNotify context: 'Jenkins', 
-                         description: 'Build succeeded', 
-                         status: 'SUCCESS'
         }
         failure {
             echo 'Pipeline failed!'
-            // Update GitHub commit status
-            githubNotify context: 'Jenkins', 
-                         description: 'Build failed', 
-                         status: 'FAILURE'
         }
         always {
             // Clean up workspace
